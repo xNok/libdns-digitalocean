@@ -2,10 +2,15 @@ package digitalocean
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/libdns/libdns"
+)
+
+var (
+	ErrRecordNotFound = errors.New("record not found")
 )
 
 // Provider implements the libdns interfaces for DigitalOcean
@@ -66,19 +71,41 @@ func (p *Provider) DeleteRecords(ctx context.Context, zone string, records []lib
 // or creating new ones. It returns the updated records.
 func (p *Provider) SetRecords(ctx context.Context, zone string, records []libdns.Record) ([]libdns.Record, error) {
 	var setRecords []libdns.Record
+	var errRecords []error
 
 	for _, record := range records {
-		// TODO: if there is no ID, look up the Name, and fill it in, or call
-		//       newRecord, err := p.addDNSEntry(ctx, zone, record)
+		// the record might already exist, even if we don't know the ID yet
+		if record.ID == "" {
+			record, err := p.getDNSEntry(ctx, zone, record)
+			if err != nil {
+				// if this is a ErrRecordNotFound we create the record
+				if errors.Is(err, ErrRecordNotFound) {
+					newRecord, err := p.addDNSEntry(ctx, zone, record)
+					if err != nil {
+						errRecords = append(errRecords, err)
+						continue
+					}
+					setRecords = append(setRecords, newRecord)
+					continue
+				}
+
+				// other errors that led to failures
+				errRecords = append(errRecords, err)
+				continue
+			}
+			// the record was found we continue
+		}
+
 		setRecord, err := p.updateDNSEntry(ctx, p.unFQDN(zone), record)
 		if err != nil {
-			return setRecords, err
+			errRecords = append(errRecords, err)
+			continue
 		}
 		setRecord.TTL = time.Duration(setRecord.TTL) * time.Second
 		setRecords = append(setRecords, setRecord)
 	}
 
-	return setRecords, nil
+	return setRecords, errors.Join(errRecords...)
 }
 
 // Interface guards

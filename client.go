@@ -2,6 +2,7 @@ package digitalocean
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -63,6 +64,30 @@ func (p *Provider) getDNSEntries(ctx context.Context, zone string) ([]libdns.Rec
 	}
 
 	return records, nil
+}
+
+func (p *Provider) getDNSEntry(ctx context.Context, zone string, record libdns.Record) (libdns.Record, error) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	p.getClient()
+
+	foundRecords, _, err := p.client.Domains.RecordsByTypeAndName(ctx, zone, record.Type, record.Name, &godo.ListOptions{})
+	if err != nil {
+		return record, err
+	}
+
+	if len(foundRecords) == 0 {
+		return record, fmt.Errorf("%w: %s %s %s", ErrRecordNotFound, zone, record.Type, record.Name)
+	}
+
+	if len(foundRecords) > 1 {
+		return record, fmt.Errorf("found multiple records for %s %s %s - this is not supposed to happend", zone, record.Type, record.Name)
+	}
+
+	record.ID = strconv.Itoa(foundRecords[0].ID)
+
+	return record, nil
 }
 
 func (p *Provider) addDNSEntry(ctx context.Context, zone string, record libdns.Record) (libdns.Record, error) {
