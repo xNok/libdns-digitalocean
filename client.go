@@ -72,7 +72,9 @@ func (p *Provider) getDNSEntry(ctx context.Context, zone string, record libdns.R
 
 	p.getClient()
 
-	foundRecords, _, err := p.client.Domains.RecordsByTypeAndName(ctx, zone, record.Type, record.Name, &godo.ListOptions{})
+	fqdn := fmt.Sprintf("%s.%s", record.Name, zone)
+
+	foundRecords, _, err := p.client.Domains.RecordsByTypeAndName(ctx, zone, record.Type, fqdn, &godo.ListOptions{})
 	if err != nil {
 		return record, err
 	}
