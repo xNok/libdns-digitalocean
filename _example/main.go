@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"os"
 	"time"
 
@@ -28,58 +29,57 @@ func main() {
 		fmt.Printf("ERROR: %s\n", err.Error())
 	}
 
-	err = TXT_Test(provider, zone, records)
+	for _, rr := range records {
+		fmt.Printf("%s %s %s\n", rr.RR().Type, rr.RR().Name, rr.RR().Data)
+	}
+
+	err = TXT_Test(provider, zone)
 	if err != nil {
 		fmt.Printf("ERROR: %s\n", err.Error())
 	}
-	err = A_Test(provider, zone, records)
+	err = A_Test(provider, zone)
 	if err != nil {
-		fmt.Printf("ERROR: %s\n", err.Error())
+		fmt.Println("ERROR: %s\n", err.Error())
 	}
 }
 
-func TXT_Test(provider digitalocean.Provider, zone string, records []libdns.Record) error {
+func TXT_Test(provider digitalocean.Provider, zone string) error {
 	testName := "libdns-txt-test"
-	testId := ""
-	for _, record := range records {
-		fmt.Printf("%s (.%s): %s, %s\n", record.Name, zone, record.Value, record.Type)
-		if record.Name == testName {
-			testId = record.ID
-		}
 
-	}
+	fmt.Printf("Create or update entry for %s\n", testName)
+	_, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{libdns.TXT{
+		Name: testName,
+		Text: fmt.Sprintf("Replacement test entry created by libdns %s", time.Now()),
+		TTL:  time.Duration(30) * time.Second,
+	}})
 
-	if testId != "" {
-		fmt.Printf("Replacing entry for %s\n", testName)
-		_, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{libdns.Record{
-			Type:  "TXT",
-			Name:  testName,
-			Value: fmt.Sprintf("Replacement test entry created by libdns %s", time.Now()),
-			TTL:   time.Duration(30) * time.Second,
-			ID:    testId,
-		}})
+	if err != nil {
 		return err
 	}
 
 	fmt.Printf("Creating new entry for %s\n", testName)
-	_, err := provider.AppendRecords(context.TODO(), zone, []libdns.Record{libdns.Record{
-		Type:  "TXT",
-		Name:  testName,
-		Value: fmt.Sprintf("This is a test entry created by libdns %s", time.Now()),
-		TTL:   time.Duration(30) * time.Second,
+	_, err = provider.AppendRecords(context.TODO(), zone, []libdns.Record{libdns.TXT{
+		Name: testName,
+		Text: fmt.Sprintf("This is a test entry created by libdns %s", time.Now()),
+		TTL:  time.Duration(30) * time.Second,
 	}})
-	return err
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func A_Test(provider digitalocean.Provider, zone string, records []libdns.Record) error {
+func A_Test(provider digitalocean.Provider, zone string) error {
 	testName := "libdns-a-test"
+	ip, _ := netip.ParseAddr("127.0.0.1")
 
-	fmt.Printf("Creating new entry for %s\n", testName)
-	_, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{libdns.Record{
-		Type:  "A",
-		Name:  testName,
-		Value: "127.0.0.1",
-		TTL:   time.Duration(30) * time.Second,
+	fmt.Printf("Create or Update new entry for %s\n", testName)
+	_, err := provider.SetRecords(context.TODO(), zone, []libdns.Record{libdns.Address{
+		Name: testName,
+		IP:   ip,
+		TTL:  time.Duration(30) * time.Second,
 	}})
 	return err
 }
